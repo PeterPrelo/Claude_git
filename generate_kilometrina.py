@@ -118,6 +118,43 @@ nst.merge_cells("E11:F13")
 wb.defined_names["KmDatumi"] = DefinedName("KmDatumi", attr_text="Nastavitve!$E$5:$E$10")
 wb.defined_names["KmCene"] = DefinedName("KmCene", attr_text="Nastavitve!$F$5:$F$10")
 
+# Dela prosti dnevi v Sloveniji - za izračun delovnih dni
+# Velikonočna nedelja: znana formula, veljavna za leta 1900-2203
+VELIKA_NOC = "(FLOOR(DATE(Leto,5,DAY(MINUTE(Leto/38)/2+56)),7)-34)"
+PRAZNIKI = [
+    ("Novo leto", "=DATE(Leto,1,1)"),
+    ("Novo leto", "=DATE(Leto,1,2)"),
+    ("Prešernov dan", "=DATE(Leto,2,8)"),
+    ("Velikonočni ponedeljek", f"={VELIKA_NOC}+1"),
+    ("Dan upora proti okupatorju", "=DATE(Leto,4,27)"),
+    ("Praznik dela", "=DATE(Leto,5,1)"),
+    ("Praznik dela", "=DATE(Leto,5,2)"),
+    ("Dan državnosti", "=DATE(Leto,6,25)"),
+    ("Marijino vnebovzetje", "=DATE(Leto,8,15)"),
+    ("Dan reformacije", "=DATE(Leto,10,31)"),
+    ("Dan spomina na mrtve", "=DATE(Leto,11,1)"),
+    ("Božič", "=DATE(Leto,12,25)"),
+    ("Dan samostojnosti in enotnosti", "=DATE(Leto,12,26)"),
+]
+PRAZ_VRSTIC = len(PRAZNIKI) + 7  # prostor za dodatne dela proste dneve
+celica(nst, "B15", "DELA PROSTI DNEVI (PRAZNIKI)", bold=True, size=12, fill=SIVA,
+       border=TANKA, h="center")
+nst.merge_cells("B15:C15")
+celica(nst, "B16", "praznik", fill=SIVA, border=TANKA, h="center")
+celica(nst, "C16", "datum", fill=SIVA, border=TANKA, h="center")
+for i in range(PRAZ_VRSTIC):
+    r = 17 + i
+    naziv, formula = PRAZNIKI[i] if i < len(PRAZNIKI) else (None, None)
+    celica(nst, f"B{r}", naziv, border=TANKA, fill=None if naziv else VNOS)
+    celica(nst, f"C{r}", formula, border=TANKA, h="center", fmt="ddd d.m.yyyy",
+           fill=None if formula else VNOS)
+zadnji_praz = 16 + PRAZ_VRSTIC
+celica(nst, f"B{zadnji_praz + 1}", "Prazniki se samodejno izračunajo za izbrano leto "
+       "(velika noč po formuli). V rumene vrstice lahko dodate druge dela proste dneve.",
+       size=9, color="595959", wrap=True, v="top")
+nst.merge_cells(f"B{zadnji_praz + 1}:C{zadnji_praz + 2}")
+wb.defined_names["Prazniki"] = DefinedName("Prazniki", attr_text=f"Nastavitve!$C$17:$C${zadnji_praz}")
+
 # ------------------------------------------------------------------ RELACIJE
 rel = wb.create_sheet("Relacije")
 rel.sheet_view.showGridLines = False
@@ -171,6 +208,11 @@ for m, mesec in enumerate(MESECI, start=1):
            fill=SIVA, border=TANKA, h="center", fmt='#,##0.00"€"')
     ws["J3"].comment = Comment("Kilometrina, ki velja na 1. dan meseca (list Nastavitve).",
                                "Kilometrina")
+    celica(ws, "I4", "delovni dnevi", fill=MODRA, border=TANKA, h="center")
+    celica(ws, "J4", f"=NETWORKDAYS(DATE(Leto,{m},1),EOMONTH(DATE(Leto,{m},1),0),Prazniki)",
+           fill=MODRA, border=TANKA, h="center", bold=True)
+    ws["J4"].comment = Comment("Število delovnih dni v mesecu (pon-pet, brez praznikov "
+                               "s lista Nastavitve).", "Delovni dnevi")
 
     glave = ["DATUM", "DOGODEK / NAMEN POTI", "RELACIJA*", "POT", "KILOMETRI", "VREDNOST**"]
     for col, t in zip("BCDEFG", glave):
@@ -180,7 +222,11 @@ for m, mesec in enumerate(MESECI, start=1):
 
     for r in range(PRVA, ZADNJA + 1):
         ws.row_dimensions[r].height = 18
-        celica(ws, f"B{r}", border=SREDNJA, h="center", fmt=DATUM)
+        # n-ti delovni dan meseca (brez vikendov in praznikov); po zadnjem ostane prazno
+        n = r - PRVA + 1
+        dat = (f'=IF(WORKDAY(DATE(Leto,{m},1)-1,{n},Prazniki)>EOMONTH(DATE(Leto,{m},1),0),'
+               f'"",WORKDAY(DATE(Leto,{m},1)-1,{n},Prazniki))')
+        celica(ws, f"B{r}", dat, border=SREDNJA, h="center", fmt=DATUM)
         celica(ws, f"C{r}", border=SREDNJA, wrap=True)
         celica(ws, f"D{r}", border=SREDNJA)
         celica(ws, f"E{r}", border=SREDNJA, h="center")
@@ -247,11 +293,11 @@ for m, mesec in enumerate(MESECI, start=1):
 # ----------------------------------------------------------- LETNI PREGLED
 lp = wb.create_sheet("Letni pregled", 2)
 lp.sheet_view.showGridLines = False
-for col, w in {"A": 2, "B": 18, "C": 14, "D": 16, "E": 16}.items():
+for col, w in {"A": 2, "B": 18, "C": 14, "D": 16, "E": 16, "F": 16}.items():
     lp.column_dimensions[col].width = w
 celica(lp, "B1", "LETNI PREGLED KILOMETRINE", bold=True, size=14)
 celica(lp, "B2", '="Leto "&Leto&" - "&Ime', size=12)
-for col, t in zip("BCDE", ["MESEC", "ŠT. POTI", "KILOMETRI", "VREDNOST"]):
+for col, t in zip("BCDEF", ["MESEC", "ŠT. POTI", "KILOMETRI", "VREDNOST", "DELOVNI DNEVI"]):
     celica(lp, f"{col}4", t, bold=True, size=12, border=SREDNJA, fill=ORANZNA, h="center")
 for i, mesec in enumerate(MESECI):
     r = 5 + i
@@ -260,8 +306,9 @@ for i, mesec in enumerate(MESECI):
            color="008000")
     celica(lp, f"D{r}", f"={mesec}!F{SKUPAJ}", border=SREDNJA, h="center", fmt=KM, color="008000")
     celica(lp, f"E{r}", f"={mesec}!G{SKUPAJ}", border=SREDNJA, h="center", fmt=EUR, color="008000")
+    celica(lp, f"F{r}", f"={mesec}!J4", border=SREDNJA, h="center", color="008000")
 celica(lp, "B17", "SKUPAJ", bold=True, size=14, border=SREDNJA, fill=ORANZNA)
-for col, fmt in zip("CDE", ["0", KM, EUR]):
+for col, fmt in zip("CDEF", ["0", KM, EUR, "0"]):
     celica(lp, f"{col}17", f"=SUM({col}5:{col}16)", bold=True, size=12, border=SREDNJA,
            fill=ORANZNA, h="center", fmt=fmt)
 
@@ -275,9 +322,11 @@ vrstice = [
     ("", False, 11),
     ("1. List Nastavitve: vpišite ime in priimek, delovno mesto, enote, leto in veljavno kilometrino (€/km).", False, 11),
     ("2. List Relacije: vpišite relacije in kilometre v ENO smer. Seznam lahko poljubno dopolnjujete (do 100 relacij).", False, 11),
-    ("3. Mesečni listi (Januar ... December): za vsako službeno pot vpišite", False, 11),
-    ("     DATUM  →  DOGODEK / NAMEN POTI  →  izberite RELACIJO s seznama  →  izberite POT (tja in nazaj / ena smer).", False, 11),
+    ("3. Mesečni listi (Januar ... December): stolpec DATUM je že izpolnjen z delovnimi dnevi meseca", False, 11),
+    ("     (brez sobot, nedelj in praznikov s lista Nastavitve). Za dan s službeno potjo vpišite", False, 11),
+    ("     DOGODEK / NAMEN POTI  →  DOGODEK / NAMEN POTI  →  izberite RELACIJO s seznama  →  izberite POT (tja in nazaj / ena smer).", False, 11),
     ("     KILOMETRI in VREDNOST se izračunata samodejno (prazna POT pomeni tja in nazaj).", False, 11),
+    ("     Pot na dela prost dan ali drugo pot v istem dnevu vpišite v prazne vrstice pod zadnjim delovnim dnem.", False, 11),
     ("4. List Letni pregled samodejno povzame število poti, kilometre in znesek po mesecih.", False, 11),
     ("5. Mesečni list je pripravljen za tisk na A4 ležeče (podpisni list).", False, 11),
     ("", False, 11),
@@ -288,7 +337,9 @@ vrstice = [
 ]
 for i, (t, b, s) in enumerate(vrstice, start=1):
     celica(nav, f"B{i}", t, bold=b, size=s, h="left")
-nav["B11"].fill = VNOS
+for c in nav["B"]:
+    if str(c.value).startswith("Rumene celice"):
+        c.fill = VNOS
 
 wb.active = wb.sheetnames.index("Januar")
 wb.save(OUT)
